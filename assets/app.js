@@ -1,5 +1,5 @@
 /* ============================================================
-   ДИАГНОСТИКА PWA — основная логика (MVP, localStorage)
+   ДИАГНОСТИКА PWA — основная логика (MVP, localStorage) — FIXED
    ============================================================ */
 
 const App = (() => {
@@ -780,7 +780,7 @@ const App = (() => {
         `;
     }
 
-    // ---------- ДЕЙСТВИЯ С ЧЕК-ЛИСТОМ ----------
+    // ---------- ДЕЙСТВИЯ ----------
     function toggleGroup(code) {
         const el = document.querySelector(`.group[data-group="${code}"]`);
         if (el) el.classList.toggle('open');
@@ -799,7 +799,6 @@ const App = (() => {
         const st = iteration.items[key];
         if (!st) return;
         st.enabled = !st.enabled;
-        logChange(sheet, `Пункт ${key}: ${st.enabled ? 'включен' : 'выключен'} (•)`);
         save();
         renderChecklist();
     }
@@ -811,9 +810,7 @@ const App = (() => {
         if (!iteration) return;
         const st = iteration.items[key];
         if (!st) return;
-        const old = st.semaphore;
         st.semaphore = val;
-        logChange(sheet, `Пункт ${key}: ${old || '—'} → ${val}`);
         save();
         renderChecklist();
     }
@@ -851,7 +848,6 @@ const App = (() => {
         if (!st) return;
         st.photos = st.photos || [];
         st.photos.push({ name: 'фото ' + (st.photos.length + 1) });
-        logChange(sheet, `Пункт ${key}: + фото`);
         save();
         renderChecklist();
     }
@@ -864,12 +860,10 @@ const App = (() => {
         const st = iteration.items[key];
         if (!st || !st.photos) return;
         st.photos.splice(idx, 1);
-        logChange(sheet, `Пункт ${key}: - фото`);
         save();
         renderChecklist();
     }
 
-    // ---------- ЗАВЕРШЕНИЕ ----------
     function finishIteration() {
         const sheet = state.sheets.find(s => s.id === state.currentSheetId);
         if (!sheet) return;
@@ -877,8 +871,6 @@ const App = (() => {
         if (!iteration) return;
 
         iteration.finishedAt = now();
-        logChange(sheet, `Завершил ${iteration.kind === 'incoming' ? 'входящую' : 'выходящую #' + iteration.number}`);
-
         if (iteration.kind === 'incoming') {
             sheet.status = 'done';
             sheet.finishedAt = iteration.finishedAt;
@@ -904,46 +896,6 @@ const App = (() => {
         } else {
             goToList();
         }
-    }
-
-    // ---------- АУДИТ-ЛОГ ----------
-    function logChange(sheet, action) {
-        sheet.auditLog = sheet.auditLog || [];
-        sheet.auditLog.push({
-            ts: now(),
-            actor: state.session?.user || 'Система',
-            action
-        });
-    }
-
-    function showAudit() {
-        const sheet = state.sheets.find(s => s.id === state.currentSheetId);
-        if (!sheet) { toast('Сначала откройте карточку'); return; }
-        document.getElementById('audit-subtitle').textContent = `${sheet.make} ${sheet.model} · ${sheet.vin}`;
-        const container = document.getElementById('audit-content');
-        const log = (sheet.auditLog || []).slice().reverse();
-        if (log.length === 0) {
-            container.innerHTML = '<div class="summary-block" style="text-align:center; padding:40px;">Пусто</div>';
-        } else {
-            container.innerHTML = log.map(entry => `
-                <div class="card" style="cursor:default;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                        <span style="font-weight:600; font-size:13px;">${escapeHtml(entry.actor)}</span>
-                        <span style="font-size:12px; color:var(--text-muted);">${formatDate(entry.ts)}</span>
-                    </div>
-                    <div style="font-size:14px; color:var(--text-secondary);">${escapeHtml(entry.action)}</div>
-                </div>
-            `).join('');
-        }
-        showScreen('screen-audit');
-    }
-
-    function goBackFromAudit() {
-        const sheet = state.sheets.find(s => s.id === state.currentSheetId);
-        if (sheet) {
-            if (sheet.status === 'incoming') openChecklist(sheet.id, state.currentIterationId);
-            else { renderDetails(sheet); showScreen('screen-details'); }
-        } else goToList();
     }
 
     // ---------- PDF ----------
@@ -1068,11 +1020,6 @@ const App = (() => {
                             }
                         });
                     }
-                });
-                sheet.auditLog.push({
-                    ts: now(),
-                    actor: 'Система (CRON)',
-                    action: 'Фото удалены (7 дней истекли), кроме гр.7'
                 });
             }
         });
