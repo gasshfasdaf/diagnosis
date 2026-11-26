@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#ffffff">
+    <title>Диагностика PWA</title>
+    <style>
+        :root {
+            --bg-color: #f5f6f8;
+            --surface: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --primary: #2563eb;
+            --primary-light: #eff6ff;
+            --success: #10b981;
+            --success-bg: #ecfdf5;
+            --warning: #f59e0b;
+            --warning-bg: #fffbeb;
+            --danger: #ef4444;
+            --danger-bg: #fef2f2;
+            --border: #e5e7eb;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Экраны */
+        .screen {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: var(--bg-color);
+            animation: fadeIn 0.3s ease;
+        }
+        .screen.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Шапка */
+        .header {
+            background: var(--surface);
+            padding: 16px;
+            box-shadow: var(--shadow-sm);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .online-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--success);
+        }
+        .online-status.offline { color: var(--text-muted); }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 10px;
+        }
+        .search-input {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--bg-color);
+            font-size: 15px;
+            outline: none;
+            transition: var(--transition);
+        }
+        .search-input:focus {
+            border-color: var(--primary);
+            background: var(--surface);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        .btn-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: var(--primary);
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: var(--shadow-md);
+        }
+        .btn-icon:active { transform: scale(0.95); }
+
+        /* Список карточек */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-bottom: 80px;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+        }
+        .card:active { transform: scale(0.98); background: #fafafa; }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .card-title {
+            font-weight: 600;
+            font-size: 16px;
+            margin: 0;
+        }
+        .card-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .card-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge.primary { background: var(--success-bg); color: var(--success); }
+        .badge.secondary { background: var(--warning-bg); color: var(--warning); }
+
+        /* Форма создания */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .form-control {
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            font-size: 15px;
+            outline: none;
+            background: var(--surface);
+            transition: var(--transition);
+        }
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        .btn-primary {
+            width: 100%;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            background: var(--primary);
+            color: white;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: var(--shadow-md);
+        }
+        .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-primary:disabled { background: var(--border); color: var(--text-muted); box-shadow: none; cursor: not-allowed; }
+
+        /* Экран входа */
+        .auth-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            padding: 32px;
+            text-align: center;
+        }
+        .auth-logo {
+            width: 80px;
+            height: 80px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            margin-bottom: 24px;
+        }
+
+        /* Экран чек-листа */
+        .sheet-header {
+            background: var(--surface);
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 10;
+        }
+        .back-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-main);
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+        .sheet-title-info {
+            flex: 1;
+        }
+        .sheet-title-info h2 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .sheet-title-info p {
+            margin: 2px 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .group {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            margin-bottom: 12px;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .group-header {
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            background: var(--surface);
+            transition: var(--transition);
+        }
+        .group-header:active { background: #f9fafb; }
+        .group-header .chevron {
+            transition: transform 0.3s ease;
+            color: var(--text-muted);
+        }
+        .group.open .group-header .chevron { transform: rotate(180deg); }
+        
+        .group-content {
+            display: none;
+            padding: 0 16px 16px;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .group.open .group-content { display: flex; }
+
+        /* Пункт */
+        .item {
+            border-radius: var(--radius-md);
+            background: var(--bg-color);
+            overflow: hidden;
+            transition: var(--transition);
+        }
+        .item-header {
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .item-title {
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .item-badge {
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .badge-Z { background: var(--success-bg); color: var(--success); }
+        .badge-G { background: var(--warning-bg); color: var(--warning); }
+        .badge-R { background: var(--danger-bg); color: var(--danger); }
+        .badge-N { background: var(--border); color: var(--text-muted); }
+
+        .item.disabled .item-title { color: var(--text-muted); text-decoration: line-through; opacity: 0.6; }
+        .item.disabled .item-content { display: none !important; }
+
+        .item-content {
+            display: none;
+            padding: 0 16px 16px;
+            flex-direction: column;
+            gap: 12px;
+            border-top: 1px solid var(--border);
+            margin-top: 4px;
+            padding-top: 12px;
+        }
+        .item.open .item-content { display: flex; }
+
+        /* Семафоры */
+        .semaphore-group {
+            display: flex;
+            gap: 8px;
+            background: var(--surface);
+            padding: 4px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+        }
+        .semaphore-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: transparent;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: var(--text-muted);
+        }
+        .semaphore-btn.active.Z { background: var(--success); color: white; }
+        .semaphore-btn.active.G { background: var(--warning); color: white; }
+        .semaphore-btn.active.R { background: var(--danger); color: white; }
+        
+        .semaphore-btn:active { transform: scale(0.95); }
+
+        /* Комментарий и Фото */
+        .comment-input {
+            width: 100%;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            resize: none;
+            background: var(--surface);
+            font-family: inherit;
+            outline: none;
+        }
+        .comment-input:focus { border-color: var(--primary); }
+
+        .photo-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .photo-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            border: 2px dashed var(--border);
+            background: var(--surface);
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .photo-btn:active { border-color: var(--primary); color: var(--primary); }
+        .photo-preview {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            background: #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: var(--text-muted);
+            position: relative;
+        }
+        .photo-preview span {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: var(--danger);
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        /* Тумблер (•) */
+        .toggle-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            background: var(--border);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: var(--transition);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .toggle.active { background: var(--primary); }
+        .toggle.active::after { transform: translateX(16px); }
+
+        /* Bottom Bar */
+        .bottom-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 16px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+            box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);
+            z-index: 20;
+        }
+
+        /* Summary blocks */
+        .summary-block {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            margin-top: 16px;
+            border: 1px solid var(--border);
+        }
+        .summary-block h3 {
+            margin: 0 0 12px;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .summary-item {
+            font-size: 13px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+        .summary-item:last-child { border-bottom: none; }
+
+        /* FAB */
+        .fab {
+            position: fixed;
+            bottom: 80px;
+            right: 16px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            box-shadow: var(--shadow-lg);
+            cursor: pointer;
+            transition: var(--transition);
+            z-index: 15;
+        }
+        .fab:active { transform: scale(0.9); }
+
+        /* Уведомления */
+        .toast {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #1f2937;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: var(--shadow-lg);
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* Скроллбар */
+        .content::-webkit-scrollbar { width: 0; }
+    </style>
+</head>
+<body>
+
+    <!-- Экран 1: Авторизация (Промокод) -->
+    <div id="screen-auth" class="screen active">
+        <div class="auth-container">
+            <div class="auth-logo">🛡️</div>
+            <h1 style="margin: 0 0 8px; font-size: 24px;">Вход в систему</h1>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 32px;">Введите корпоративный промокод для доступа к диагностике</p>
+            <input type="text" id="promo-input" class="form-control" placeholder="Например: DIAG-2024" style="width: 100%; text-align: center; letter-spacing: 2px; font-weight: 600; margin-bottom: 16px;">
+            <button class="btn-primary" onclick="login()">Войти</button>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 16px;">Демо-режим: введите любой код</p>
+        </div>
+    </div>
+
+    <!-- Экран 2: Список листов -->
+    <div id="screen-list" class="screen">
+        <div class="header">
+            <div class="header-top">
+                <span>Мои диагностики</span>
+                <div class="online-status" id="net-status">
+                    <div class="dot"></div> <span>Online</span>
+                </div>
+            </div>
+            <div class="search-row">
+                <input type="text" class="search-input" placeholder="Поиск по VIN или модели...">
+                <button class="btn-icon" onclick="showScreen('screen-create')">+</button>
+            </div>
+        </div>
+        <div class="content" id="sheets-list">
+            <!-- Карточки добавляются через JS -->
+        </div>
+    </div>
+
+    <!-- Экран 3: Создание листа -->
+    <div id="screen-create" class="screen">
+        <div class="sheet-header">
+            <button class="back-btn" onclick="showScreen('screen-list')">←</button>
+            <div class="sheet-title-info"><h2>Новый лист</h2></div>
+        </div>
+        <div class="content">
+            <div class="form-group">
+                <label>Сотрудник</label>
+                <select class="form-control">
+                    <option>Иванов И.И.</option>
+                    <option>Петров П.П.</option>
+                    <option>Сидоров С.С.</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Марка</label>
+                <input type="text" class="form-control" placeholder="Например: Mazda">
+            </div>
+            <div class="form-group">
+                <label>Модель</label>
+                <input type="text" class="form-control" placeholder="Например: CX-5">
+            </div>
+            <div class="form-group">
+                <label>VIN</label>
+                <input type="text" class="form-control" placeholder="17-значный код">
+            </div>
+            <button class="btn-primary" style="margin-top: 16px;" onclick="createSheet()">Начать работу</button>
+        </div>
+    </div>
+
+    <!-- Экран 4: Чек-лист (Первичка/Вторичка) -->
+    <div id="screen-checklist" class="screen">
+        <div class="sheet-header">
+            <button class="back-btn" onclick="showScreen('screen-list')">←</button>
+            <div class="sheet-title-info">
+                <h2 id="chk-title">Mazda CX-5</h2>
+                <p id="chk-subtitle">Первичная диагностика · Иванов И.</p>
+            </div>
+            <button class="back-btn" onclick="showToast('PDF сформирован')">📄</button>
+        </div>
+        <div class="content" id="checklist-content" style="padding-bottom: 100px;">
+            <!-- Группы и пункты рендерятся JS -->
+        </div>
+        <div class="bottom-bar">
+            <button class="btn-primary" onclick="finishChecklist()">Завершил</button>
+        </div>
+    </div>
+
+    <!-- Тосты -->
+    <div id="toast" class="toast">Готово</div>
+
+    <script>
+        // --- Состояние приложения ---
+        let state = {
+            user: null,
+            sheets: [
+                { id: 1, creator: 'Иванов И.И.', make: 'Mazda', model: 'CX-5', vin: 'RUMKEEW7A00007840', status: 'primary', date: '12.05.2024' },
+                { id: 2, creator: 'Петров П.П.', make: 'Volkswagen', model: 'Polo', vin: 'WVWZZZ6RZBY123456', status: 'secondary', date: '10.05.2024' },
+                { id: 3, creator: 'Сидоров С.С.', make: 'Kia', model: 'Rio', vin: 'Z94CB41AAGR123456', status: 'primary', date: '08.05.2024' }
+            ],
+            currentSheet: null,
+            checklist: []
+        };
+
+        // --- Инициализация тестовых данных чек-листа ---
+        const CHECKLIST_DATA = [
+            {
+                id: 'g1', title: '1. Тест-драйв', open: false, items: [
+                    { id: 'i1', title: 'Работа ДВС', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: true, enabled: true },
+                    { id: 'i2', title: 'Работа КПП', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'Ж', comment: 'Толчок при переключении', hasPhoto: true, enabled: true },
+                    { id: 'i3', title: 'Сцепление (•)', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: false, enabled: true, toggleable: true }
+                ]
+            },
+            {
+                id: 'g2', title: '2. Электрооборудование', open: false, items: [
+                    { id: 'i4', title: 'ЦЗ дверей (•)', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: false, enabled: true, toggleable: true },
+                    { id: 'i5', title: 'Стеклоподъёмники', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: false, enabled: true },
+                    { id: 'i6', title: 'Мультимедиа (•)', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'К', comment: 'Не включается', hasPhoto: true, enabled: true, toggleable: true },
+                    { id: 'i7', title: 'Кондиционер (•)', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: false, enabled: false, toggleable: true }
+                ]
+            },
+            {
+                id: 'g3', title: '3. Компьютерная диагностика', open: false, items: [
+                    { id: 'i8', title: 'Наличие ошибок (•)', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: true, enabled: true, toggleable: true },
+                    { id: 'i9', title: 'Коррекция форсунок (•)', type: 'semaphore', options: ['З', 'Ж', 'К'], current: 'З', comment: '', hasPhoto: true, enabled: true, toggleable: true }
+                ]
+            }
+        ];
+
+        // --- Навигация ---
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if (id === 'screen-list') renderSheets();
+            if (id === 'screen-checklist') renderChecklist();
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2500);
+        }
+
+        // --- Авторизация ---
+        function login() {
+            const input = document.getElementById('promo-input').value;
+            if (input.trim().length > 0) {
+                // Имитация запроса на сервер
+                state.user = { name: 'Иванов И.И.' };
+                showToast('Успешный вход');
+                setTimeout(() => showScreen('screen-list'), 500);
+                
+                // Запрос Push уведомлений (имитация)
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            } else {
+                showToast('Введите промокод');
+            }
+        }
+
+        // --- Список листов ---
+        function renderSheets() {
+            const container = document.getElementById('sheets-list');
+            container.innerHTML = '';
+            state.sheets.forEach(sheet => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.onclick = () => openSheet(sheet);
+                
+                const badgeClass = sheet.status === 'primary' ? 'primary' : 'secondary';
+                const badgeText = sheet.status === 'primary' ? 'Первичка' : 'Вторичка';
+
+                div.innerHTML = `
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">${sheet.make} ${sheet.model}</div>
+                            <div class="card-subtitle">VIN: ${sheet.vin}</div>
+                        </div>
+                        <div class="card-actions">
+                            <span style="font-size:20px; cursor:pointer;" onclick="event.stopPropagation(); showToast('Редактирование')">✏️</span>
+                            <span style="font-size:20px; cursor:pointer;" onclick="event.stopPropagation(); showToast('Скачивание PDF')">📄</span>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                        <div class="card-subtitle">${sheet.creator}</div>
+                        <span class="badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // --- Создание листа ---
+        function createSheet() {
+            const inputs = document.querySelectorAll('#screen-create .form-control');
+            const make = inputs[1].value || 'Новый';
+            const model = inputs[2].value || 'Авто';
+            const vin = inputs[3].value || 'VIN000000000000';
+            
+            const newSheet = {
+                id: Date.now(),
+                creator: 'Иванов И.И.',
+                make: make,
+                model: model,
+                vin: vin,
+                status: 'primary',
+                date: new Date().toLocaleDateString('ru-RU')
+            };
+            state.sheets.unshift(newSheet);
+            showToast('Лист создан');
+            openSheet(newSheet);
+        }
+
+        // --- Открытие чек-листа ---
+        function openSheet(sheet) {
+            state.currentSheet = sheet;
+            document.getElementById('chk-title').textContent = `${sheet.make} ${sheet.model}`;
+            document.getElementById('chk-subtitle').textContent = `${sheet.status === 'primary' ? 'Первичная' : 'Вторичная'} диагностика · ${sheet.creator}`;
+            
+            // Клонируем данные для редактирования
+            state.checklist = JSON.parse(JSON.stringify(CHECKLIST_DATA));
+            
+            // Если вторичка, фильтруем пункты (оставляем только Ж/К) - демонстрация
+            if (sheet.status === 'secondary') {
+                state.checklist.forEach(g => {
+                    g.items = g.items.filter(i => i.current === 'Ж' || i.current === 'К');
+                });
+                state.checklist = state.checklist.filter(g => g.items.length > 0);
+            }
+
+            showScreen('screen-checklist');
+        }
+
+        // --- Рендер чек-листа ---
+        function renderChecklist() {
+            const container = document.getElementById('checklist-content');
+            container.innerHTML = '';
+
+            state.checklist.forEach(group => {
+                const groupEl = document.createElement('div');
+                groupEl.className = `group ${group.open ? 'open' : ''}`;
+                
+                // Заголовок группы
+                const header = document.createElement('div');
+                header.className = 'group-header';
+                header.innerHTML = `<span>${group.title}</span> <span class="chevron">▼</span>`;
+                header.onclick = () => {
+                    group.open = !group.open;
+                    groupEl.classList.toggle('open');
+                };
+                groupEl.appendChild(header);
+
+                // Контент группы
+                const content = document.createElement('div');
+                content.className = 'group-content';
+
+                group.items.forEach(item => {
+                    const itemEl = document.createElement('div');
+                    const isDisabled = item.toggleable && !item.enabled;
+                    itemEl.className = `item ${item.open ? 'open' : ''} ${isDisabled ? 'disabled' : ''}`;
+                    
+                    // Превью семафора
+                    let badgeClass = 'badge-N';
+                    let badgeText = '—';
+                    if (item.current === 'З') { badgeClass = 'badge-Z'; badgeText = 'З'; }
+                    if (item.current === 'Ж') { badgeClass = 'badge-G'; badgeText = 'Ж'; }
+                    if (item.current === 'К') { badgeClass = 'badge-R'; badgeText = 'К'; }
+
+                    // Заголовок пункта
+                    const itemHeader = document.createElement('div');
+                    itemHeader.className = 'item-header';
+                    itemHeader.innerHTML = `
+                        <div class="item-title">
+                            ${item.title}
+                            <span class="item-badge ${badgeClass}">${badgeText}</span>
+                        </div>
+                        <span class="chevron" style="font-size:12px; color:var(--text-muted);">▼</span>
+                    `;
+                    itemHeader.onclick = (e) => {
+                        if (e.target.closest('.toggle')) return; // Игнорируем клик по тумблеру
+                        item.open = !item.open;
+                        itemEl.classList.toggle('open');
+                    };
+                    itemEl.appendChild(itemHeader);
+
+                    // Контент пункта
+                    const itemContent = document.createElement('div');
+                    itemContent.className = 'item-content';
+
+                    // Тумблер (•) если есть
+                    if (item.toggleable) {
+                        const toggleWrap = document.createElement('div');
+                        toggleWrap.className = 'toggle-wrap';
+                        toggleWrap.innerHTML = `
+                            <span>Не применимо к этому авто</span>
+                            <div class="toggle ${item.enabled ? 'active' : ''}" onclick="toggleItem('${item.id}')"></div>
+                        `;
+                        itemContent.appendChild(toggleWrap);
+                    }
+
+                    // Семафоры (только если включен)
+                    if (item.enabled) {
+                        const semGroup = document.createElement('div');
+                        semGroup.className = 'semaphore-group';
+                        
+                        // Если это вторичка, показываем "было -> стало"
+                        // Для простоты прототипа просто выводим кнопки
+                        item.options.forEach(opt => {
+                            const btn = document.createElement('button');
+                            btn.className = `semaphore-btn ${item.current === opt ? 'active ' + opt : ''}`;
+                            btn.textContent = opt === 'З' ? '🟢 З' : opt === 'Ж' ? '🟡 Ж' : '🔴 К';
+                            btn.onclick = () => setSemaphore(item.id, opt);
+                            semGroup.appendChild(btn);
+                        });
+                        itemContent.appendChild(semGroup);
+
+                        // Комментарий
+                        const comment = document.createElement('textarea');
+                        comment.className = 'comment-input';
+                        comment.placeholder = 'Комментарий...';
+                        comment.value = item.comment || '';
+                        comment.onchange = (e) => { item.comment = e.target.value; };
+                        itemContent.appendChild(comment);
+
+                        // Фото (только если hasPhoto и не вторичка)
+                        if (item.hasPhoto && state.currentSheet.status === 'primary') {
+                            const photoRow = document.createElement('div');
+                            photoRow.className = 'photo-row';
+                            photoRow.innerHTML = `
+                                <div class="photo-btn" onclick="showToast('Камера')">+</div>
+                                <div class="photo-preview">Фото 1 <span>×</span></div>
+                            `;
+                            itemContent.appendChild(photoRow);
+                        }
+                    }
+
+                    itemEl.appendChild(itemContent);
+                    content.appendChild(itemEl);
+                });
+
+                groupEl.appendChild(content);
+                container.appendChild(groupEl);
+            });
+
+            // Добавляем Summary блоки
+            const summary = document.createElement('div');
+            summary.innerHTML = `
+                <div class="summary-block">
+                    <h3>🔴 Критические к устранению <span>2</span></h3>
+                    <div class="summary-item">Мультимедиа — Не включается</div>
+                    <div class="summary-item">Другое...</div>
+                </div>
+                <div class="summary-block">
+                    <h3>🟡 Рекомендуемые к устранению <span>1</span></h3>
+                    <div class="summary-item">Работа КПП — Толчок при переключении</div>
+                </div>
+            `;
+            container.appendChild(summary);
+        }
+
+        // --- Взаимодействие ---
+        function toggleItem(id) {
+            // Поиск пункта
+            state.checklist.forEach(g => {
+                const item = g.items.find(i => i.id === id);
+                if (item) {
+                    item.enabled = !item.enabled;
+                    renderChecklist(); // Перерисовка
+                }
+            });
+        }
+
+        function setSemaphore(id, val) {
+            state.checklist.forEach(g => {
+                const item = g.items.find(i => i.id === id);
+                if (item) {
+                    item.current = val;
+                    renderChecklist();
+                }
+            });
+        }
+
+        function finishChecklist() {
+            showToast('Диагностика завершена! PDF сформирован.');
+            setTimeout(() => {
+                showScreen('screen-list');
+            }, 1000);
+        }
+
+        // --- Симуляция оффлайн/онлайн ---
+        window.addEventListener('online', () => {
+            document.getElementById('net-status').innerHTML = '<div class="dot"></div> <span>Online</span>';
+            document.getElementById('net-status').classList.remove('offline');
+            showToast('Соединение восстановлено');
+        });
+        window.addEventListener('offline', () => {
+            document.getElementById('net-status').innerHTML = '<div class="dot"></div> <span>Offline</span>';
+            document.getElementById('net-status').classList.add('offline');
+            showToast('Нет сети. Работаем оффлайн.');
+        });
+
+        // Инициализация
+        renderSheets();
+    </script>
+</body>
+</html>
