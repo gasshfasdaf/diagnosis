@@ -1,10 +1,10 @@
 /* ============================================================
-   ДИАГНОСТИКА PWA — iPhone-like styles
+   ДИАГНОСТИКА PWA — iPhone-like styles (ИСПРАВЛЕННЫЙ)
    ============================================================ */
 
 :root {
     --bg-color: #f2f2f7;
-    --surface: rgba(255, 255, 255, 0.72);
+    --surface: rgba(255, 255, 255, 0.85);
     --surface-solid: #ffffff;
     --surface-blur: saturate(180%) blur(20px);
     --text-main: #1c1c1e;
@@ -256,19 +256,12 @@ body {
 }
 .card:active {
     transform: scale(0.98);
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.95);
 }
 
-.card.status-incoming {
-    border-left: 4px solid var(--success);
-}
-.card.status-done {
-    border-left: 4px solid var(--warning);
-}
-.card.status-archived {
-    border-left: 4px solid var(--text-muted);
-    opacity: 0.65;
-}
+.card.status-incoming { border-left: 4px solid var(--success); }
+.card.status-done { border-left: 4px solid var(--warning); }
+.card.status-archived { border-left: 4px solid var(--text-muted); opacity: 0.65; }
 
 .card-header {
     display: flex;
@@ -415,17 +408,13 @@ select.form-control {
     background: rgba(142, 142, 147, 0.12);
     color: var(--text-main);
 }
-.btn-danger {
-    background: var(--danger);
-    color: white;
-}
 .btn-block {
     width: 100%;
     display: flex;
 }
 
 /* ============================================================
-   ЭКРАН АВТОРИЗАЦИИ
+   АВТОРИЗАЦИЯ
    ============================================================ */
 .auth-container {
     display: flex;
@@ -493,7 +482,7 @@ select.form-control {
 }
 
 /* ============================================================
-   ЭКРАН СПИСКА / ДЕТАЛЕЙ / ЧЕК-ЛИСТА
+   ЗАГОЛОВКИ ЭКРАНОВ
    ============================================================ */
 .sheet-header {
     padding: 8px 12px;
@@ -541,7 +530,7 @@ select.form-control {
 }
 
 /* ============================================================
-   ГРУППЫ И ПУНКТЫ
+   ГРУППЫ И ПУНКТЫ (ИСПРАВЛЕНО)
    ============================================================ */
 .group {
     background: var(--surface);
@@ -550,9 +539,12 @@ select.form-control {
     border-radius: var(--radius-lg);
     margin-bottom: 10px;
     box-shadow: var(--shadow-sm);
-    overflow: hidden;
+    /* overflow: hidden;  <-- Убрал, чтобы не резать тени и внутренние элементы */
     border: 0.5px solid var(--border);
+    display: flex;
+    flex-direction: column;
 }
+
 .group-header {
     padding: 16px;
     display: flex;
@@ -565,21 +557,27 @@ select.form-control {
     transition: var(--transition);
     user-select: none;
     -webkit-user-select: none;
+    border-radius: var(--radius-lg);
 }
 .group-header:active { background: rgba(142, 142, 147, 0.06); }
+
 .group-header .chevron {
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     color: var(--text-muted);
     font-size: 12px;
     flex-shrink: 0;
+    display: inline-block;
 }
 .group.open .group-header .chevron { transform: rotate(180deg); }
 
 .group-content {
     display: none;
-    padding: 0 12px 12px;
+    padding: 0 12px 12px 12px;
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+    /* Убираем любые ограничения высоты */
+    min-height: 0;
 }
 .group.open .group-content {
     display: flex;
@@ -597,6 +595,9 @@ select.form-control {
     overflow: hidden;
     transition: var(--transition);
     border: 0.5px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    width: 100%;
 }
 .item.disabled {
     opacity: 0.55;
@@ -655,6 +656,8 @@ select.form-control {
     border-top: 0.5px solid var(--border);
     margin-top: 2px;
     padding-top: 12px;
+    width: 100%;
+    min-height: 0;
 }
 .item.open .item-content {
     display: flex;
@@ -694,7 +697,6 @@ select.form-control {
 .semaphore-btn.active.R { background: var(--danger); color: white; box-shadow: 0 2px 8px rgba(255, 59, 48, 0.4); }
 .semaphore-btn:active { transform: scale(0.95); }
 
-/* Вторичка: было -> стало */
 .semaphore-transition {
     display: flex;
     align-items: center;
@@ -801,7 +803,7 @@ select.form-control {
 }
 
 /* ============================================================
-   ТУМБЛЕР (•)
+   ТУМБЛЕР
    ============================================================ */
 .toggle-wrap {
     display: flex;
@@ -1014,23 +1016,9 @@ select.form-control {
     from { opacity: 0; transform: scale(0.95) translateY(10px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
-.modal h3 {
-    margin: 0 0 16px;
-    font-size: 18px;
-    font-weight: 700;
-}
-.modal p {
-    color: var(--text-muted);
-    font-size: 14px;
-    margin: 0 0 16px;
-    line-height: 1.5;
-}
-.modal-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 16px;
-}
+.modal h3 { margin: 0 0 16px; font-size: 18px; font-weight: 700; }
+.modal p { color: var(--text-muted); font-size: 14px; margin: 0 0 16px; line-height: 1.5; }
+.modal-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 
 /* ============================================================
    PDF-ЭКРАН
@@ -1075,13 +1063,3 @@ select.form-control {
    ============================================================ */
 .content::-webkit-scrollbar { width: 0; height: 0; }
 .content { scrollbar-width: none; }
-
-/* ============================================================
-   АДАПТИВ (для очень маленьких экранов)
-   ============================================================ */
-@media (max-width: 360px) {
-    .header-title { font-size: 20px; }
-    .tab { font-size: 12px; padding: 8px 4px; }
-    .card-title { font-size: 16px; }
-    .semaphore-btn { font-size: 12px; padding: 8px 4px; }
-}
