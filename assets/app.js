@@ -1,5 +1,5 @@
 /* ============================================================
-   ДИАГНОСТИКА PWA — основная логика (MVP, localStorage) — FIXED
+   ДИАГНОСТИКА PWA — основная логика (MVP, localStorage) — FINAL FIX
    ============================================================ */
 
 const App = (() => {
@@ -896,6 +896,46 @@ const App = (() => {
         } else {
             goToList();
         }
+    }
+
+    // ---------- АУДИТ-ЛОГ ----------
+    function logChange(sheet, action) {
+        sheet.auditLog = sheet.auditLog || [];
+        sheet.auditLog.push({
+            ts: now(),
+            actor: state.session?.user || 'Система',
+            action
+        });
+    }
+
+    function showAudit() {
+        const sheet = state.sheets.find(s => s.id === state.currentSheetId);
+        if (!sheet) { toast('Сначала откройте карточку'); return; }
+        document.getElementById('audit-subtitle').textContent = `${sheet.make} ${sheet.model} · ${sheet.vin}`;
+        const container = document.getElementById('audit-content');
+        const log = (sheet.auditLog || []).slice().reverse();
+        if (log.length === 0) {
+            container.innerHTML = '<div class="summary-block" style="text-align:center; padding:40px;">Пусто</div>';
+        } else {
+            container.innerHTML = log.map(entry => `
+                <div class="card" style="cursor:default;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-weight:600; font-size:13px;">${escapeHtml(entry.actor)}</span>
+                        <span style="font-size:12px; color:var(--text-muted);">${formatDate(entry.ts)}</span>
+                    </div>
+                    <div style="font-size:14px; color:var(--text-secondary);">${escapeHtml(entry.action)}</div>
+                </div>
+            `).join('');
+        }
+        showScreen('screen-audit');
+    }
+
+    function goBackFromAudit() {
+        const sheet = state.sheets.find(s => s.id === state.currentSheetId);
+        if (sheet) {
+            if (sheet.status === 'incoming') openChecklist(sheet.id, state.currentIterationId);
+            else { renderDetails(sheet); showScreen('screen-details'); }
+        } else goToList();
     }
 
     // ---------- PDF ----------
