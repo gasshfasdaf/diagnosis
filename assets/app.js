@@ -18,12 +18,10 @@ const App = (() => {
         currentSheetId: null,
         currentIterationId: null,
         searchQuery: '',
-        pdfIterationId: null
+        currentReadOnly: false
     };
 
     // ---------- СПРАВОЧНИК ЧЕК-ЛИСТА ----------
-    // Определяем структуру групп и пунктов.
-    // Каждый пункт: { id, title, options: ['З','Ж','К'] | ['З','Ж/К','К'], toggleable: bool, hasPhoto: bool }
     const CHECKLIST_TEMPLATE = [
         {
             code: '1', title: '1. Тест-драйв', items: [
@@ -160,10 +158,6 @@ const App = (() => {
         return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' ' +
                d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }
-    function formatDateOnly(iso) {
-        if (!iso) return '—';
-        return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-    }
     function daysLeft(expireIso) {
         if (!expireIso) return null;
         const ms = new Date(expireIso).getTime() - Date.now();
@@ -171,8 +165,17 @@ const App = (() => {
         return Math.ceil(ms / (24 * 60 * 60 * 1000));
     }
     function photosExpired(sheet) {
-        if (!sheet.finishedAt) return false;
+        if (!sheet.finishedAt || !sheet.photosExpireAt) return false;
         return Date.now() >= new Date(sheet.photosExpireAt).getTime();
+    }
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     // ---------- ПЕРСИСТЕНС ----------
@@ -194,7 +197,6 @@ const App = (() => {
             localStorage.setItem(STORAGE_KEY, JSON.stringify({ sheets: state.sheets }));
         } catch (e) {
             console.error('Save error', e);
-            toast('Ошибка сохранения');
         }
         if (state.session) {
             localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
@@ -228,19 +230,14 @@ const App = (() => {
     function login() {
         const input = document.getElementById('promo-input');
         const code = (input.value || '').trim();
-        if (!code) {
-            toast('Введите промокод');
-            return;
-        }
-        if (code !== PROMO_CODE) {
-            toast('Неверный промокод');
-            return;
-        }
+        if (!code) { toast('Введите промокод'); return; }
+        if (code !== PROMO_CODE) { toast('Неверный промокод'); return; }
+
         state.session = { user: 'Иванов И.И.', loginAt: now() };
         save();
         toast('Добро пожаловать!');
         input.value = '';
-        // Запрос push-разрешения
+
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission().catch(() => {});
         }
@@ -260,16 +257,13 @@ const App = (() => {
     // ---------- СПИСОК КАРТОЧЕК ----------
     function getFilteredSheets() {
         let list = state.sheets.slice();
-        // Фильтр по табу
         list = list.filter(s => {
             if (state.currentTab === 'actual') {
-                // Актуальные: зеленые (incoming) + желтые (done) до 7 дней
                 if (s.status === 'incoming') return true;
                 if (s.status === 'done') return !photosExpired(s);
                 return false;
             }
             if (state.currentTab === 'history') {
-                // История: желтые после 7 дней
                 return s.status === 'done' && photosExpired(s);
             }
             if (state.currentTab === 'archive') {
@@ -277,7 +271,7 @@ const App = (() => {
             }
             return false;
         });
-        // Поиск
+
         const q = (state.searchQuery || '').trim().toLowerCase();
         if (q) {
             list = list.filter(s =>
@@ -287,7 +281,7 @@ const App = (() => {
                 (s.creator || '').toLowerCase().includes(q)
             );
         }
-        // Сортировка: зеленые сверху (по дате создания desc), потом желтые (по дате завершения desc)
+
         list.sort((a, b) => {
             if (a.status === 'incoming' && b.status !== 'incoming') return -1;
             if (a.status !== 'incoming' && b.status === 'incoming') return 1;
@@ -322,21 +316,15 @@ const App = (() => {
         const statusIcon = sheet.status === 'incoming' ? '🟢' :
                           sheet.status === 'done' ? '🟡' : '⚪';
 
-        // Дата для отображения
         const displayDate = sheet.status === 'incoming' ? sheet.createdAt : (sheet.finishedAt || sheet.createdAt);
 
-        // Информация о фото
         let photoInfo = '';
         if (sheet.status === 'done' && sheet.photosExpireAt) {
             const left = daysLeft(sheet.photosExpireAt);
-            if (left > 0) {
-                photoInfo = `<span style="font-size:11px; color:var(--warning);">📷 фото: ${left} дн.</span>`;
-            } else {
-                photoInfo = `<span style="font-size:11px; color:var(--text-muted);">📷 фото удалены</span>`;
-            }
+            if (left > 0) photoInfo = `<span style="font-size:11px; color:var(--warning);">📷 фото: ${left} дн.</span>`;
+            else photoInfo = `<span style="font-size:11px; color:var(--text-muted);">📷 фото удалены</span>`;
         }
 
-        // Количество выходящих
         const outgoingCount = (sheet.iterations || []).filter(i => i.kind === 'outgoing').length;
         const iterationsInfo = sheet.status !== 'incoming' && outgoingCount > 0
             ? `<span style="font-size:11px; color:var(--text-muted);">🔧 выходящих: ${outgoingCount}</span>`
@@ -373,21 +361,13 @@ const App = (() => {
         const model = (document.getElementById('create-model').value || '').trim();
         const vin = (document.getElementById('create-vin').value || '').trim().toUpperCase();
 
-        if (!make || !model) {
-            toast('Заполните марку и модель');
-            return;
-        }
-        if (!vin || vin.length < 5) {
-            toast('Введите VIN (минимум 5 символов)');
-            return;
-        }
+        if (!make || !model) { toast('Заполните марку и модель'); return; }
+        if (!vin || vin.length < 5) { toast('Введите VIN (минимум 5 символов)'); return; }
 
-        // Создаем карточку
         const sheetId = uid();
         const iterationId = uid();
         const createdAt = now();
 
-        // Инициализация состояния пунктов
         const items = {};
         CHECKLIST_TEMPLATE.forEach(group => {
             group.items.forEach(item => {
@@ -442,18 +422,16 @@ const App = (() => {
         state.currentSheetId = sheetId;
 
         if (sheet.status === 'incoming') {
-            // Открываем на редактирование входящей
             const inc = sheet.iterations.find(i => i.kind === 'incoming');
             state.currentIterationId = inc.id;
             openChecklist(sheetId, inc.id);
         } else {
-            // Открываем экран деталей (выбор состояния)
             renderDetails(sheet);
             showScreen('screen-details');
         }
     }
 
-    // ---------- ДЕТАЛИ (ВЫБОР СОСТОЯНИЯ) ----------
+    // ---------- ДЕТАЛИ ----------
     function renderDetails(sheet) {
         document.getElementById('details-title').textContent = `${sheet.make} ${sheet.model}`;
         document.getElementById('details-subtitle').textContent = `VIN: ${sheet.vin} · ${sheet.creator}`;
@@ -464,7 +442,6 @@ const App = (() => {
 
         let html = '';
 
-        // Входящая
         if (incoming) {
             const expired = photosExpired(sheet);
             const photoBadge = expired
@@ -484,7 +461,6 @@ const App = (() => {
             `;
         }
 
-        // Выходящие
         if (outgoing.length > 0) {
             html += `<div style="font-weight:700; font-size:15px; margin:16px 0 8px; padding-left:4px;">Выходящие диагностики</div>`;
             outgoing.forEach((iter, idx) => {
@@ -502,7 +478,6 @@ const App = (() => {
             });
         }
 
-        // Кнопка "Новая выходящая"
         html += `
             <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="App.createOutgoing('${sheet.id}')">
                 + Новая выходящая
@@ -512,18 +487,16 @@ const App = (() => {
         container.innerHTML = html;
     }
 
-    // ---------- СОЗДАНИЕ ВЫХОДЯЩЕЙ ----------
+    // ---------- ВЫХОДЯЩАЯ ----------
     function createOutgoing(sheetId) {
         const sheet = state.sheets.find(s => s.id === sheetId);
         if (!sheet) return;
 
-        const incoming = sheet.iterations.find(i => i.kind === 'incoming');
         const outgoingCount = sheet.iterations.filter(i => i.kind === 'outgoing').length;
 
-        // Собираем только Ж/К пункты из входящей (кумулятивно)
         const items = {};
-        // Берем последнее состояние по каждому пункту
         const lastStates = {};
+
         sheet.iterations.forEach(iter => {
             if (iter.finishedAt || iter.kind === 'incoming') {
                 Object.keys(iter.items).forEach(key => {
@@ -531,7 +504,6 @@ const App = (() => {
                     if (st && st.semaphore && (st.semaphore === 'Ж' || st.semaphore === 'К' || st.semaphore === 'Ж/К')) {
                         lastStates[key] = { ...st };
                     } else if (st && st.semaphore === 'З') {
-                        // Если стало З — удаляем из списка актуальных проблем
                         delete lastStates[key];
                     }
                 });
@@ -541,7 +513,6 @@ const App = (() => {
         Object.keys(lastStates).forEach(key => {
             items[key] = {
                 ...lastStates[key],
-                semaphore: lastStates[key].semaphore,
                 comment: '',
                 photos: []
             };
@@ -579,13 +550,11 @@ const App = (() => {
         state.currentIterationId = iterationId;
         state.currentReadOnly = readOnly || sheet.status === 'archived' || (sheet.status === 'done' && iteration.kind === 'incoming');
 
-        // Заголовок
         document.getElementById('chk-title').textContent = `${sheet.make} ${sheet.model}`;
         const kindText = iteration.kind === 'incoming' ? 'Входящая' : `Выходящая #${iteration.number}`;
         const statusText = iteration.finishedAt ? `завершена ${formatDate(iteration.finishedAt)}` : 'в работе';
         document.getElementById('chk-subtitle').textContent = `${kindText} · ${sheet.creator} · ${statusText}`;
 
-        // Bottom bar
         const bottomBar = document.getElementById('checklist-bottom-bar');
         if (state.currentReadOnly || iteration.finishedAt) {
             bottomBar.style.display = 'none';
@@ -606,10 +575,8 @@ const App = (() => {
         const container = document.getElementById('checklist-content');
         const readOnly = state.currentReadOnly;
 
-        // Определяем, какие группы показывать
         let groupsToRender = CHECKLIST_TEMPLATE;
         if (iteration.kind === 'outgoing') {
-            // В выходящей — только группы/пункты, которые есть в items
             groupsToRender = CHECKLIST_TEMPLATE.map(g => {
                 const filteredItems = g.items.filter(item => iteration.items[`${g.code}.${item.code}`]);
                 return { ...g, items: filteredItems };
@@ -629,7 +596,7 @@ const App = (() => {
         let html = '';
         groupsToRender.forEach(group => {
             const isPermanent = PERMANENT_GROUPS.includes(group.code);
-            const groupTitle = group.title + (isPermanent ? '' : '');
+            const groupTitle = group.title;
             html += `
                 <div class="group" data-group="${group.code}">
                     <div class="group-header" onclick="App.toggleGroup('${group.code}')">
@@ -641,26 +608,24 @@ const App = (() => {
             group.items.forEach(item => {
                 const key = `${group.code}.${item.code}`;
                 const st = iteration.items[key] || { enabled: true, semaphore: 'З', comment: '', photos: [] };
-                html += renderItem(group, item, st, iteration, readOnly);
+                html += renderItemHtml(group, item, st, iteration, readOnly);
             });
             html += `</div></div>`;
         });
 
-        // Summary блоки (только для входящей или завершенной)
         if (iteration.kind === 'incoming' || iteration.finishedAt) {
             const summary = buildSummary(iteration);
-            html += renderSummary(summary);
+            html += renderSummaryHtml(summary);
         }
 
         container.innerHTML = html;
     }
 
-    function renderItem(group, item, st, iteration, readOnly) {
+    function renderItemHtml(group, item, st, iteration, readOnly) {
         const key = `${group.code}.${item.code}`;
         const disabled = item.toggleable && !st.enabled;
         const options = item.options;
 
-        // Бейдж
         let badgeClass = 'badge-N';
         let badgeText = '—';
         if (st.semaphore === 'З') { badgeClass = 'badge-Z'; badgeText = 'З'; }
@@ -668,10 +633,8 @@ const App = (() => {
         else if (st.semaphore === 'К') { badgeClass = 'badge-R'; badgeText = 'К'; }
         else if (st.semaphore === 'Ж/К') { badgeClass = 'badge-GR'; badgeText = 'Ж/К'; }
 
-        // Выходящая — показываем "было -> стало"
         let transitionHtml = '';
         if (iteration.kind === 'outgoing') {
-            // Находим предыдущее состояние
             const prevSem = findPreviousSemaphore(st, iteration);
             if (prevSem && prevSem !== st.semaphore) {
                 transitionHtml = `
@@ -684,7 +647,6 @@ const App = (() => {
             }
         }
 
-        // Семафоры
         let semHtml = '';
         if (!item.onlyPhoto && !readOnly) {
             semHtml = `<div class="semaphore-group">`;
@@ -695,7 +657,6 @@ const App = (() => {
             });
             semHtml += `</div>`;
 
-            // Для Ж/К — поле процента
             if (item.isPercent && st.semaphore === 'Ж/К') {
                 semHtml += `
                     <div style="display:flex; gap:8px; align-items:center;">
@@ -710,19 +671,15 @@ const App = (() => {
             semHtml = `<div class="semaphore-transition"><span>Текущий:</span><span class="item-badge ${badgeClass}">${badgeText}</span></div>`;
         }
 
-        // Комментарий
         let commentHtml = '';
         if (!item.onlyPhoto) {
             if (readOnly) {
-                if (st.comment) {
-                    commentHtml = `<div style="font-size:13px; padding:10px 12px; background:rgba(142,142,147,0.08); border-radius:8px;">💬 ${escapeHtml(st.comment)}</div>`;
-                }
+                if (st.comment) commentHtml = `<div style="font-size:13px; padding:10px 12px; background:rgba(142,142,147,0.08); border-radius:8px;">💬 ${escapeHtml(st.comment)}</div>`;
             } else {
                 commentHtml = `<textarea class="comment-input" placeholder="Комментарий..." onchange="App.setComment('${key}', this.value)">${escapeHtml(st.comment || '')}</textarea>`;
             }
         }
 
-        // Фото (только входящая, не выходящая)
         let photoHtml = '';
         if (item.hasPhoto && iteration.kind === 'incoming') {
             const permanent = item.permanentPhoto || PERMANENT_GROUPS.includes(group.code);
@@ -747,7 +704,6 @@ const App = (() => {
             }
         }
 
-        // Тумблер (•)
         let toggleHtml = '';
         if (item.toggleable) {
             if (!readOnly) {
@@ -784,10 +740,8 @@ const App = (() => {
     function findPreviousSemaphore(currentState, currentIteration) {
         const sheet = state.sheets.find(s => s.id === state.currentSheetId);
         if (!sheet) return null;
-        // Ищем во всех итерациях до текущей
         const idx = sheet.iterations.findIndex(i => i.id === currentIteration.id);
         if (idx <= 0) return null;
-        // Берем состояние из предыдущей итерации
         const prev = sheet.iterations[idx - 1];
         const key = `${currentState.groupCode}.${currentState.itemCode}`;
         if (prev.items[key]) return prev.items[key].semaphore;
@@ -811,7 +765,7 @@ const App = (() => {
         return { critical, recommend };
     }
 
-    function renderSummary(summary) {
+    function renderSummaryHtml(summary) {
         const cCount = summary.critical.length;
         const rCount = summary.recommend.length;
         return `
@@ -826,7 +780,7 @@ const App = (() => {
         `;
     }
 
-    // ---------- ВЗАИМОДЕЙСТВИЕ С ЧЕК-ЛИСТОМ ----------
+    // ---------- ДЕЙСТВИЯ С ЧЕК-ЛИСТОМ ----------
     function toggleGroup(code) {
         const el = document.querySelector(`.group[data-group="${code}"]`);
         if (el) el.classList.toggle('open');
@@ -872,7 +826,6 @@ const App = (() => {
         const st = iteration.items[key];
         if (!st) return;
         st.semaphoreValue = parseFloat(val) || 0;
-        // Пересчет: <80 → Ж, >=80 → К
         st.semaphore = st.semaphoreValue >= 80 ? 'К' : 'Ж';
         save();
         renderChecklist();
@@ -916,7 +869,7 @@ const App = (() => {
         renderChecklist();
     }
 
-    // ---------- ЗАВЕРШЕНИЕ ИТЕРАЦИИ ----------
+    // ---------- ЗАВЕРШЕНИЕ ----------
     function finishIteration() {
         const sheet = state.sheets.find(s => s.id === state.currentSheetId);
         if (!sheet) return;
@@ -935,7 +888,6 @@ const App = (() => {
         save();
         toast('Итерация завершена');
 
-        // Возврат на список или детали
         if (sheet.status === 'incoming') {
             goToList();
         } else {
@@ -966,10 +918,7 @@ const App = (() => {
 
     function showAudit() {
         const sheet = state.sheets.find(s => s.id === state.currentSheetId);
-        if (!sheet) {
-            toast('Сначала откройте карточку');
-            return;
-        }
+        if (!sheet) { toast('Сначала откройте карточку'); return; }
         document.getElementById('audit-subtitle').textContent = `${sheet.make} ${sheet.model} · ${sheet.vin}`;
         const container = document.getElementById('audit-content');
         const log = (sheet.auditLog || []).slice().reverse();
@@ -993,10 +942,7 @@ const App = (() => {
         const sheet = state.sheets.find(s => s.id === state.currentSheetId);
         if (sheet) {
             if (sheet.status === 'incoming') openChecklist(sheet.id, state.currentIterationId);
-            else {
-                renderDetails(sheet);
-                showScreen('screen-details');
-            }
+            else { renderDetails(sheet); showScreen('screen-details'); }
         } else goToList();
     }
 
@@ -1038,14 +984,12 @@ const App = (() => {
             </div>
         `;
 
-        // Группы
         CHECKLIST_TEMPLATE.forEach(group => {
             const itemsToShow = group.items.filter(item => {
                 const key = `${group.code}.${item.code}`;
                 return iteration.items[key] && iteration.items[key].enabled !== false;
             });
             if (itemsToShow.length === 0) return;
-            // Для выходящей — показываем только те, что есть в items (уже отфильтровано)
             if (iteration.kind === 'outgoing' && !itemsToShow.some(item => iteration.items[`${group.code}.${item.code}`])) return;
 
             html += `<h2>${escapeHtml(group.title)}</h2>`;
@@ -1054,7 +998,6 @@ const App = (() => {
                 const st = iteration.items[key];
                 if (!st) return;
 
-                // Фото: в входящей — если не истекли, или это группа 7 (вечные). В выходящей — нет
                 let photosText = '';
                 if (iteration.kind === 'incoming' && item.hasPhoto && st.photos && st.photos.length > 0) {
                     const permanent = item.permanentPhoto || PERMANENT_GROUPS.includes(group.code);
@@ -1076,7 +1019,6 @@ const App = (() => {
             });
         });
 
-        // Summary
         const summary = buildSummary(iteration);
         html += `
             <div class="pdf-summary">
@@ -1101,25 +1043,19 @@ const App = (() => {
         const sheet = state.sheets.find(s => s.id === state.currentSheetId);
         if (sheet) {
             if (sheet.status === 'incoming') openChecklist(sheet.id, state.currentIterationId);
-            else {
-                renderDetails(sheet);
-                showScreen('screen-details');
-            }
+            else { renderDetails(sheet); showScreen('screen-details'); }
         } else goToList();
     }
 
-    // ---------- ДЕБАГ-ПАНЕЛЬ ----------
+    // ---------- ДЕБАГ ----------
     function toggleDebug() {
-        const menu = document.getElementById('debug-menu');
-        menu.classList.toggle('open');
+        document.getElementById('debug-menu').classList.toggle('open');
     }
 
     function simulateCron() {
-        // Переводим все завершенные входящие старше 7 дней в "Историю" (фактически фото удаляются, статус done остается)
         let count = 0;
         state.sheets.forEach(sheet => {
             if (sheet.status === 'done' && sheet.photosExpireAt) {
-                // Удаляем все фото, кроме группы 7
                 sheet.iterations.forEach(iter => {
                     if (iter.kind === 'incoming') {
                         Object.keys(iter.items).forEach(key => {
@@ -1146,10 +1082,7 @@ const App = (() => {
     }
 
     function demoPush() {
-        if (!('Notification' in window)) {
-            toast('Уведомления не поддерживаются');
-            return;
-        }
+        if (!('Notification' in window)) { toast('Уведомления не поддерживаются'); return; }
         if (Notification.permission === 'granted') {
             new Notification('Диагностика', {
                 body: 'Демо-уведомление: карточка готова к выходящей диагностике',
@@ -1177,13 +1110,11 @@ const App = (() => {
         showScreen('screen-auth');
     }
 
-    // ---------- МОДАЛЬНОЕ ОКНО ----------
     function closeModal(e) {
         if (e && e.target !== e.currentTarget) return;
         document.getElementById('modal').classList.remove('open');
     }
 
-    // ---------- ТОСТ ----------
     let toastTimer = null;
     function toast(msg) {
         const t = document.getElementById('toast');
@@ -1194,22 +1125,10 @@ const App = (() => {
         toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
     }
 
-    // ---------- ЭКРАНИРОВАНИЕ HTML ----------
-    function escapeHtml(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
     // ---------- ИНИЦИАЛИЗАЦИЯ ----------
     function init() {
         load();
 
-        // Поиск
         const searchInput = document.getElementById('search-input');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
@@ -1218,7 +1137,6 @@ const App = (() => {
             });
         }
 
-        // Онлайн/оффлайн
         function updateNetStatus() {
             const el = document.getElementById('net-status');
             if (!el) return;
@@ -1234,12 +1152,10 @@ const App = (() => {
         window.addEventListener('offline', () => { updateNetStatus(); toast('Нет сети. Работаем оффлайн'); });
         updateNetStatus();
 
-        // Регистрация Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW reg fail', err));
         }
 
-        // Если есть сессия — сразу в список
         if (state.session) {
             renderList();
             showScreen('screen-list');
@@ -1248,40 +1164,14 @@ const App = (() => {
         }
     }
 
-    // ---------- ПУБЛИЧНЫЙ API ----------
+    // ---------- ЭКСПОРТ ----------
     return {
-        init,
-        login,
-        goToList,
-        goToCreate,
-        switchTab,
-        createSheet,
-        openSheet,
-        openChecklist,
-        toggleGroup,
-        toggleItemOpen,
-        toggleItem,
-        setSemaphore,
-        setPercent,
-        setComment,
-        addPhoto,
-        removePhoto,
-        finishIteration,
-        goBackFromChecklist,
-        showAudit,
-        goBackFromAudit,
-        openPdfMenu,
-        openPdf,
-        printPdf,
-        goBackFromPdf,
-        createOutgoing,
-        toggleDebug,
-        simulateCron,
-        demoPush,
-        resetData,
-        closeModal
+        init, login, goToList, goToCreate, switchTab, createSheet, openSheet, openChecklist,
+        toggleGroup, toggleItemOpen, toggleItem, setSemaphore, setPercent, setComment,
+        addPhoto, removePhoto, finishIteration, goBackFromChecklist, showAudit, goBackFromAudit,
+        openPdfMenu, openPdf, printPdf, goBackFromPdf, createOutgoing, toggleDebug, simulateCron,
+        demoPush, resetData, closeModal
     };
 })();
 
-// Запуск после загрузки DOM
 document.addEventListener('DOMContentLoaded', () => App.init());
